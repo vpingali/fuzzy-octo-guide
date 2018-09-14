@@ -1,0 +1,140 @@
+import pandas as pd
+import numpy as np
+
+import nltk                                                                                                                                                                      
+from nltk.corpus import stopwords
+from nltk.tokenize import sent_tokenize, word_tokenize
+from string import punctuation
+from nltk.stem import WordNetLemmatizer
+from nltk.util import ngrams
+
+from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import ShuffleSplit
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
+from sklearn import svm
+
+from sklearn.linear_model import LinearRegression
+
+from sklearn.model_selection import GridSearchCV
+
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_curve
+
+#all the text preprocessing 
+stopwords = set(nltk.corpus.stopwords.words('english') + list(punctuation) + ['please','try' ,'/', '-','+',':',';','sorry', 'us','will','in','a','to','the','can','of'] )
+sno = nltk.stem.SnowballStemmer('english')
+tokens = word_tokenize
+
+def loaddata(filename):
+   #itrain=pd.read_csv('/Users/vidya.pingali/Desktop/TextExpt/itrain.csv',sep=“,”)
+   idata = pd.read_csv(filename,encoding = 'cp1252',sep=",",error_bad_lines=False,warn_bad_lines=False)
+   
+   for ind,linestr in enumerate(idata.iloc[:,1]):
+       doc = tokens(linestr.lower());
+       doc = [sno.stem(x) for x in doc if x not in stopwords];
+       linestr=' '.join(doc)
+       idata.iloc[ind,1]=linestr
+   return idata
+
+itrain=loaddata('/Users/vidya.pingali/Desktop/TextExpt/itrain.csv')
+itest=loaddata('/Users/vidya.pingali/Desktop/TextExpt/itestanswers.csv')
+
+rs = ShuffleSplit(n_splits = 5, test_size = .2, random_state = 0)
+
+for train_index, test_index in rs.split(itrain.iloc[:,1]):
+   xtrain=itrain.iloc[:,1][train_index]
+   ytrain=itrain.iloc[:,2][train_index]
+   xtest=itrain.iloc[:,1][test_index]
+   ytest=itrain.iloc[:,2][test_index]
+   tfidf = TfidfVectorizer()
+   vtrain = tfidf.fit_transform(xtrain)
+   vtest = tfidf.transform(xtest)
+
+   clf = LogisticRegression(penalty='l2')
+  
+   clf.fit(vtrain, ytrain)    #regular one
+  
+   #print vtest
+   #print vtest.shape
+   ypred = clf.predict(vtest)
+   
+#testing
+tfidf = TfidfVectorizer()
+wtrain = tfidf.fit_transform(itrain.iloc[:,1])
+ztrain = itrain.iloc[:,2]
+wtest = tfidf.transform(itest.iloc[:,1])
+clf = LogisticRegression(penalty='l2')
+
+clf.fit(wtrain, ztrain)
+# y_pred = clf.predict(wtest)
+# print wtest[:10]
+
+y_true = map(lambda x: int(x=="Y"), itest.iloc[:,2])
+
+#auc,roc
+y_pred = clf.predict_proba(wtest)
+y_label = clf.predict(wtest)
+
+y_pred0 = map(lambda x: x[1], y_pred)
+
+#print y_label[:20]
+#print y_true[:20]
+#print y_pred0[:10]
+    
+#auc, roc
+auc = roc_auc_score(y_true, y_pred0)
+roc = roc_curve(y_true, y_pred0)
+
+print "\033[1m" + "Logistic Regression" + "\033[0;0m"
+print "AUC = " + str(auc)
+#print "ROC = " + str(roc_curve)
+
+#accuracy,precision,recall,f1
+
+#p = predicted value
+#t = true value
+
+true_pos = 0
+true_neg = 0
+false_pos = 0
+false_neg = 0
+for p,t in zip(y_label, y_true):
+    if p=='Y' and t==1:
+        true_pos+=1
+    if p=='N' and t==0:
+        true_neg+=1
+    if p=='Y' and t==0:
+        false_pos+=1
+    if p=='N' and t==1:
+        false_neg+=1
+        
+
+acc = float(true_pos + true_neg) / float(true_pos + true_neg + false_pos + false_neg)
+print "Accuracy = " + str(acc)
+recall = true_pos / float(true_pos + false_neg)
+print "Recall = " + str(recall)
+prec = true_pos / float(true_pos + false_pos)
+print "Precision = " + str(prec)
+fscore = (2 * prec * recall) / (prec + recall)
+print "F Score = " + str(fscore)
+
+
+#printing ROC
+import matplotlib.pyplot as plt
+from sklearn.metrics import auc
+fpr, tpr, threshold = roc_curve(y_true, y_pred0)
+roc_auc = auc(fpr, tpr)
+plt.title('ROC Curve')
+plt.plot(fpr, tpr, 'b', label = 'AUC = %0.2f' % roc_auc)
+plt.legend(loc = 'lower right')
+plt.plot([0, 1], [0, 1],'r--')
+plt.xlim([0, 1])
+plt.ylim([0, 1])
+plt.ylabel('True Positive Rate')
+plt.xlabel('False Positive Rate')
+plt.show()
